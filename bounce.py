@@ -15,6 +15,7 @@ r=diam/2
 # contact properties and initial conditions
 Kn=10000.
 Cn=5.772 # calculated by assuming a COR of 0.7 (O'Sullivan 2011)
+xwall=0.
 
 H0=0.2
 g=9.81
@@ -28,11 +29,13 @@ x[0]=H0
 v=np.zeros(np.size(t))
 
 # Updating Particle Location
-for i in range(0,np.size(t)-1):
-    if x[i]>r:
+for i in range(0,np.size(t)-1): 
+    dn=x[i]-xwall-r
+    if dn>=0:
         a=-g
     else:
-        a=(-Kn*(x[i]-r)-Cn*v[i])/m-g
+        a=max((-Kn*(x[i]-r)-Cn*v[i]),0)/m-g
+    
     v[i+1]=v[i]+a*dt
     #x[i+1]=(v[i]+v[i+1])/2*dt+x[i]
     x[i+1]=x[i]+v[i]*dt+0.5*a*dt*dt
