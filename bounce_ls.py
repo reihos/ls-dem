@@ -64,13 +64,53 @@ for i in range(0,np.size(t)-1):
     for j in range(1,n+1):
         y[i+1,j]=y[i+1,0]+r*math.sin(alpha*(j-1))
 
+
+# Theoretical Solution
+
+# oscillator parameters    
+Ccrit=2*math.sqrt(Kn*m)
+zeta=Cn/Ccrit
+wn=math.sqrt(Kn/m)
+wd=wn*math.sqrt(1-zeta**2)
+
+# initiation
+yth=np.zeros(np.size(t))
+yth[0]=H0
+v0=0
+t0=0
+h0=H0
+flag=0
+
+# calculation
+for i in range(0,np.size(t)-1):
+    if yth[i]>=r:
+        if flag==1:
+            v0=math.exp(-zeta*wn*(t[i]-tcol))*(v0col*math.cos(wd*(t[i]-tcol))-zeta/math.sqrt(1-zeta**2)*v0col*math.sin(wd*(t[i]-tcol)))
+            t0=t[i]
+            h0=yth[i]
+            flag=0
+
+        yth[i+1]=-0.5*g*(t[i+1]-t0)**2+v0*(t[i+1]-t0)+h0
+
+    else:
+        if flag==0:
+            v0col=v0-g*(t[i]-t0)
+            tcol=t[i]
+            ycol=yth[i]
+            flag=1
+
+        u=math.exp(-zeta*wn*(t[i+1]-tcol))*(v0col/wd*math.sin(wd*(t[i+1]-tcol)))-m*g/Kn
+        yth[i+1]=ycol+u
+
+
 # Importing the LAMMPS results
 with open("lammps.json","r") as f:
     data=json.load(f)
 
 # Plotting
-plt.plot(t,y[:,0],label="My Code")
+plt.plot(t,y[:,0],label="LS-DEM")
 plt.plot(np.arange(len(data["height"]))*data["dt"],data["height"],"--r",label="LAMMPS")
+plt.plot(t,yth,":k",label="Theoretical")
 plt.legend()
 plt.show()
 
