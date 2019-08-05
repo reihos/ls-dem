@@ -27,7 +27,7 @@ ybottom=-0.05
 # Discretization
 dy=0.01
 dt=0.000001
-n=8 #number of boundary nodes for the particle
+n=4 #number of boundary nodes for the particle
 alpha=2*math.pi/n
 
 # Initializing t,y and v arrays
@@ -108,6 +108,7 @@ with open("lammps.json","r") as f:
     data=json.load(f)
 
 # Plotting
+plt.figure(figsize=(10,7))
 plt.plot(t,y[:,0],label="LS-DEM")
 plt.plot(np.arange(len(data["height"]))*data["dt"],data["height"],"--r",label="LAMMPS")
 plt.plot(t,yth,":k",label="Theoretical")
