@@ -15,11 +15,11 @@ I=m/4*(a**2+b**2)
 
 # Contact properties and initial conditions
 Kn=10000.
-#Cn=5.772 
-Cn=0.
+Cn=5.772 
+#Cn=0.
 H0=0.2
 g=9.81
-theta=0/180*math.pi #angle of the ball
+theta=20/180*math.pi #angle of the ball
 
 # Geometrical properties
 ywall=0.
@@ -55,12 +55,9 @@ omega=0.
 a=np.zeros(len(t))
 alpha=np.zeros(len(t))
 
-Ep=np.zeros(len(t))
-Ek=np.zeros(len(t))
-Et=np.zeros(len(t))
-Ep[0]=m*g*yc[0]
-Ek[0]=0.5*m*v[0]**2+0.5*I*omega**2
-Et[0]=Ep[0]+Ek[0]
+Ep=np.zeros(len(t)-1)
+Ek=np.zeros(len(t)-1)
+Et=np.zeros(len(t)-1)
 
 # Defining the level set function for the wall
 ny=int((ytop-ybottom)/dy)
@@ -101,9 +98,9 @@ for i in range(0,len(t)-1):
     for j in range(0,n):
         vy[i+1,j]=vy[i,j]+a[i]*dt+alpha[i]*dt*r[j]*math.cos(d_angle*j+theta)
     # caculating the energies
-    Ep[i+1]=m*g*yc[i+1]+Es
-    Ek[i+1]=0.5*m*v[i+1]**2+0.5*I*omega**2
-    Et[i+1]=Ep[i+1]+Ek[i+1]
+    Ep[i]=m*g*yc[i]+Es
+    Ek[i]=0.5*m*v[i]**2+0.5*I*omega**2
+    Et[i]=Ep[i]+Ek[i]
 
     # printing
     printing=0
@@ -118,11 +115,11 @@ for i in range(0,len(t)-1):
 
 
 # Importing the LAMMPS results
-with open("lammps.json","r") as f:
+with open("../../sphere/lammps.json","r") as f:
     data=json.load(f)
 
 # Plotting
-plot='1'
+plot='12'
 if '1' in plot:
     plt.figure(figsize=(10,7))
     plt.plot(t,yc,label="LS-DEM")
@@ -134,9 +131,9 @@ if '1' in plot:
 
 if '2' in plot:
     plt.figure(figsize=(10,7))
-    plt.plot(t,Ep,label="potential energy")
-    plt.plot(t,Ek,label="kinetic energy",linestyle="--")
-    plt.plot(t,Et,label="total energy")
+    plt.plot(t[:-1],Ep,label="potential energy")
+    plt.plot(t[:-1],Ek,label="kinetic energy",linestyle="--")
+    plt.plot(t[:-1],Et,label="total energy")
     plt.xlabel("time (sec)")
     plt.ylabel("energy (J)")
     plt.legend()
