@@ -32,20 +32,21 @@ xright=0.4
 xleft=-0.4
 
 # Discretization
-dx=dy=0.01
+dx=dy=0.0001
 dt=0.0001
 nn=32 #number of boundary nodes for the particle
 d_angle=2*math.pi/nn #discretization angle
 
 # Initializing t, x, y, v, omega, and energy arrays
-t=np.arange(0,0.5,dt)
+T=1
+t=np.arange(0,T,dt)
 
 xc=np.zeros((len(t),nps)) # x of center
 yc=np.zeros((len(t),nps)) # y of center
 yc[0,0]=0.025
 yc[0,1]=H0
-#xc[0,0]=0.
-#xc[0,1]=-0.01
+#xc[0,0]=-0.05
+#xc[0,1]=0.05
 x=np.zeros((len(t),nn,nps)) 
 y=np.zeros((len(t),nn,nps))
 
@@ -89,6 +90,8 @@ for xx in range(nx):
 ibottom=ybottom/dy #needed in the next step
 ileft=xleft/dx
 LSi=np.zeros(nn)
+i_delta_x=0
+i_delta_y=0
 
 # Updating Particlies Locations
 for i in range(len(t)-1):
@@ -97,7 +100,7 @@ for i in range(len(t)-1):
         ay[i,k]=-g   
         for j in range(nn):
             # finding the index of the node 
-            yf=math.floor(y[i,j,k]*100)/100
+            yf=math.floor(y[i,j,k]/dy)*dy
             iyf=int(math.floor(y[i,j,k]/dy)-ibottom)
             # interpolating
             LSi[j]=LSw[iyf]+(y[i,j,k]-yf)*(LSw[iyf+1]-LSw[iyf])/dy
@@ -111,10 +114,13 @@ for i in range(len(t)-1):
     # contact between the two particles
     for j in range(nn):
         # finding the indices of the node
-        xf=math.floor(x[i,j,1]*100)/100
-        yf=math.floor(y[i,j,1]*100)/100
+        xf=math.floor(x[i,j,1]/dx)*dx
+        yf=math.floor(y[i,j,1]/dy)*dy
         ixf=int(math.floor(x[i,j,1]/dx)-ileft)
         iyf=int(math.floor(y[i,j,1]/dy)-ibottom)
+        # updating LSp indices based on the spheres new location
+        ixf=ixf-i_delta_x
+        iyf=iyf-i_delta_y
         # interpolating
         LSi[j]=LSp[ixf,iyf]*(xf+dx-x[i,j,1])*(yf+dy-y[i,j,1])+LSp[ixf+1,iyf]*(x[i,j,1]-xf)*(yf+dy-y[i,j,1])+LSp[ixf,iyf+1]*(xf+dx-x[i,j,1])*(y[i,j,1]-yf)+LSp[ixf+1,iyf+1]*(x[i,j,1]-xf)*(y[i,j,1]-yf)
         LSi[j]=LSi[j]/dx/dy
@@ -165,13 +171,16 @@ for i in range(len(t)-1):
         Ek[i,k]=0.5*m[k]*(vx[i,k]**2+vy[i,k]**2)+0.5*I[k]*omega[k]**2
         Et[i,k]=Ep[i,k]+Ek[i,k]
 
-    # updating LSp
-    for xx in range(nx):
-        for yy in range(ny):
-            xg=xleft+xx*dx 
-            yg=ybottom+yy*dy
-            R=math.sqrt((xg-xc[i+1,0])**2+(yg-yc[i+1,0])**2)
-            LSp[xx,yy]=R-aa[0]
+    # finding the indices required for updating LSp
+    i_delta_x=int(round((xc[i+1,0]-xc[0,0])/dx))
+    i_delta_y=int(round((yc[i+1,0]-yc[0,0])/dy))
+   
+   # for xx in range(nx):
+   #     for yy in range(ny):
+   #         xg=xleft+xx*dx 
+   #         yg=ybottom+yy*dy
+   #         R=math.sqrt((xg-xc[i+1,0])**2+(yg-yc[i+1,0])**2)
+   #         LSp[xx,yy]=R-aa[0]
 
 
     # printing
@@ -191,7 +200,7 @@ with open("lammps.json","r") as f:
     data=json.load(f)
 
 # Plotting
-plot='4'
+plot='3'
 if '1' in plot:
     plt.figure(figsize=(10,7))
     plt.plot(t,yc,label="LS-DEM")
@@ -213,11 +222,14 @@ if '2' in plot:
 
 if '3' in plot:
     plt.figure(figsize=(10,5))
-    for n in range(100,5000,50):
+    fcolor=['#FFA07A','#A52A2A']
+    ecolor=['#FF8C00','#D2691E']  
+    # plotting every 0.005sec
+    for n in range(0,int(T/dt),int(0.005/dt)): 
         plt.cla()
         for k in range(nps):
-            plt.plot(np.append(x[n,:,k],x[n,0,k]),np.append(y[n,:,k],y[n,0,k]),'k')
-        plt.axis([-0.3, 0.3, 0, 0.2])
+            plt.fill(np.append(x[n,:,k],x[n,0,k]),np.append(y[n,:,k],y[n,0,k]),facecolor=fcolor[k],edgecolor=ecolor[k])
+        plt.axis([-0.3, 0.3, 0, 0.3])
         plt.gca().set_aspect('equal')
         plt.savefig('Frame%07d.png' %n)
 
