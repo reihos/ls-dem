@@ -8,16 +8,16 @@ import json
 # SI Units
 
 # Particle properties
-nps=2 #number of particles #particle 1 circle, particle 2 ellipse
+nps=2 #number of particles #particle 0 circle, particle 1 ellipse
 m=np.array([0.0654498,0.0654498])
-aa=np.array([0.025, 0.05]) 
-bb=np.array([0.025, 0.025])
+aa=np.array([0.025, 0.05]) #horizontal radius 
+bb=np.array([0.025, 0.025]) #vertical radius
 I=m/4*(aa**2+bb**2)
 theta=[0/180*math.pi, 0/180*math.pi]  #angles of the balls
 
 # Contact properties 
 Kn=10000.
-#Cn=5.772 
+#Cn=5.772
 Cn=0.
 
 # Initial Conditions
@@ -32,15 +32,17 @@ xright=0.4
 xleft=-0.4
 
 # Discretization
-dx=dy=0.0001
+dx=dy=0.001
 dt=0.0001
 nn=32 #number of boundary nodes for the particle
 d_angle=2*math.pi/nn #discretization angle
 
 # Initializing t, x, y, v, omega, and energy arrays
+# time
 T=1
 t=np.arange(0,T,dt)
 
+# location
 xc=np.zeros((len(t),nps)) # x of center
 yc=np.zeros((len(t),nps)) # y of center
 yc[0,0]=0.025
@@ -57,16 +59,24 @@ for j in range(nn):
         x[0,j,k]=xc[0,k]+r[j,k]*math.cos(d_angle*(j)+theta[k])
         y[0,j,k]=yc[0,k]+r[j,k]*math.sin(d_angle*(j)+theta[k])
 
+# velocity
 vx=np.zeros((len(t),nps)) #velocity of the center of mass
 vy=np.zeros((len(t),nps)) 
 vnx=np.zeros((len(t),nn,nps)) #velocity of each node on the particle
 vny=np.zeros((len(t),nn,nps))
+vx_half=np.zeros(nps)
+vy_half=np.ones(nps)*g*dt/2
+vnx_half=np.zeros((nn,nps))
+vny_half=np.zeros((nn,nps))
 omega=np.zeros(nps)
+omega_half=np.zeros(nps)
 
+# acceleration
 ax=np.zeros((len(t),nps))
 ay=np.zeros((len(t),nps))
 alpha=np.zeros((len(t),nps))
 
+# energy
 Ep=np.zeros((len(t)-1,nps))
 Ek=np.zeros((len(t)-1,nps))
 Et=np.zeros((len(t)-1,nps))
@@ -93,8 +103,9 @@ LSi=np.zeros(nn)
 i_delta_x=0
 i_delta_y=0
 
-# Updating Particlies Locations
+# Updating the Kinematic Properties of Particles
 for i in range(len(t)-1):
+    # Updating the Accelerations
     # contact between all particles and the wall
     for k in range(nps):
         ay[i,k]=-g   
@@ -147,24 +158,38 @@ for i in range(len(t)-1):
 
             Ep[i,:]+=0.5*Kn*LSi[j]**2
 
+    # Updating Locations and Velocities
     for k in range(nps):
         # updating the location of the center of the particles
-        xc[i+1,k]=xc[i,k]+vx[i,k]*dt+0.5*ax[i,k]*dt**2
-        yc[i+1,k]=yc[i,k]+vy[i,k]*dt+0.5*ay[i,k]*dt**2
+        #xc[i+1,k]=xc[i,k]+vx[i,k]*dt+0.5*ax[i,k]*dt**2
+        #yc[i+1,k]=yc[i,k]+vy[i,k]*dt+0.5*ay[i,k]*dt**2
+        vx_half[k]+=ax[i,k]*dt
+        vy_half[k]+=ay[i,k]*dt
+        xc[i+1,k]=xc[i,k]+vx_half[k]*dt
+        yc[i+1,k]=yc[i,k]+vy_half[k]*dt
         # calculating the rotation angle
-        theta[k]+=omega[k]*dt+0.5*alpha[i,k]*dt**2
+        #theta[k]+=omega[k]*dt+0.5*alpha[i,k]*dt**2
+        omega_half[k]+=alpha[i,k]*dt
+        theta[k]+=omega_half[k]*dt
         # updating the location of all the nodes on the particle
         for j in range(nn):
             x[i+1,j,k]=xc[i+1,k]+r[j,k]*math.cos(d_angle*j+theta[k])
             y[i+1,j,k]=yc[i+1,k]+r[j,k]*math.sin(d_angle*j+theta[k])
         
         # updating the velocities
-        vx[i+1,k]=vx[i,k]+ax[i,k]*dt
-        vy[i+1,k]=vy[i,k]+ay[i,k]*dt
-        omega[k]+=alpha[i,k]*dt
+        #vx[i+1,k]=vx[i,k]+ax[i,k]*dt
+        #vy[i+1,k]=vy[i,k]+ay[i,k]*dt
+        #omega[k]+=alpha[i,k]*dt
+        vx[i+1,k]=vx_half[k]+ax[i,k]*dt/2
+        vy[i+1,k]=vy_half[k]+ay[i,k]*dt/2
+        omega[k]=omega_half[k]+alpha[i,k]*dt/2
         for j in range(nn):
-            vnx[i+1,j,k]=vnx[i,j,k]+ax[i,k]*dt+alpha[i,k]*dt*r[j,k]*-math.sin(d_angle*j+theta[k])
-            vny[i+1,j,k]=vny[i,j,k]+ay[i,k]*dt+alpha[i,k]*dt*r[j,k]*math.cos(d_angle*j+theta[k])
+            #vnx[i+1,j,k]=vnx[i,j,k]+ax[i,k]*dt+alpha[i,k]*dt*r[j,k]*-math.sin(d_angle*j+theta[k])
+            #vny[i+1,j,k]=vny[i,j,k]+ay[i,k]*dt+alpha[i,k]*dt*r[j,k]*math.cos(d_angle*j+theta[k])
+            vnx_half[j,k]+=ax[i,k]*dt+alpha[i,k]*dt*r[j,k]*-math.sin(d_angle*j+theta[k])  
+            vny_half[j,k]+=ay[i,k]*dt+alpha[i,k]*dt*r[j,k]*math.cos(d_angle*j+theta[k])  
+            vnx[i+1,j,k]=vnx_half[j,k]+ax[i,k]*dt/2+alpha[i,k]*dt/2*r[j,k]*-math.sin(d_angle*j+theta[k])
+            vny[i+1,j,k]=vny_half[j,k]+ay[i,k]*dt/2+alpha[i,k]*dt/2*r[j,k]*math.cos(d_angle*j+theta[k])
 
         # caculating the energies
         Ep[i,k]+=m[k]*g*yc[i,k]
@@ -200,7 +225,9 @@ with open("lammps.json","r") as f:
     data=json.load(f)
 
 # Plotting
-plot='3'
+# plot 1: height vs time  plot 2: energy vs time  
+# plot 3: 2D location   plot 4: acceleration and velocity vs time
+plot='2'
 if '1' in plot:
     plt.figure(figsize=(10,7))
     plt.plot(t,yc,label="LS-DEM")
@@ -214,7 +241,7 @@ if '2' in plot:
     plt.figure(figsize=(10,7))
     plt.plot(t[:-1],Ep,label="potential energy")
     plt.plot(t[:-1],Ek,label="kinetic energy",linestyle="--")
-    plt.plot(t[:-1],Et,label="total energy")
+    plt.plot(t[:-1],Et[:,0]+Et[:,1],label="total energy")
     plt.xlabel("time (sec)")
     plt.ylabel("energy (J)")
     plt.legend()
