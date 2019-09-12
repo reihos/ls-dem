@@ -146,12 +146,12 @@ for i in range(len(t)-1):
             normal_v=(vnx[i,j,1]-vx[i,0])*normal_x+(vny[i,j,1]-vy[i,0])*normal_y
             
             # updating the accelerations
-            # slave particle
+            # master particle
             Fn=-Kn*LSi[j]-Cn*normal_v 
             ax[i,1]+=Fn*normal_x/m[k]
             ay[i,1]+=Fn*normal_y/m[k]
             alpha[i,1]+=Fn*(normal_x*(y[i,j,1]-yc[i,1])+normal_y*(x[i,j,1]-xc[i,1]))/I[k]
-            # master particle
+            # slave particle
             ax[i,0]+=-Fn*normal_x/m[k]
             ay[i,0]+=-Fn*normal_y/m[k]
             alpha[i,0]+=-Fn*(normal_x*(y[i,j,0]-yc[i,0])+normal_y*(x[i,j,0]-xc[i,0]))/I[k]
