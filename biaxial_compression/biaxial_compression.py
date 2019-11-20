@@ -8,35 +8,47 @@ import matplotlib.pyplot as plt
 
 # Particle properties
 total_nps=158 #total number of particles
-m=0.04
-r=np.zeros(total_nps)
+rho=7.85*1e3 #kg/m^2
+#r=np.zeros(total_nps)
+r=np.ones(total_nps)*0.003
+r_avg=np.mean(r)
+m=math.pi*r[0]**2*rho
 
 # Contact properties 
-Kn=1e6
+Kn=Kt=5*1e7 #N/m
 damping=5/100
 Ccrit=2*math.sqrt(Kn*m)
 Cn=damping*Ccrit
-g=9.81
 
 # Geometrical properties
-ybottom=-0.05
-ytop=0.35
-xright=0.16
+ybottom=0.
+ytop=0.110
+xright=0.048
 xleft=0.
-width=xright-xleft
+
+# Window for Stress Calculation
+stress_window_top=0.75*(ytop-ybottom)+ybottom
+stress_window_bottom=0.25*(ytop-ybottom)+ybottom
+stress_window_right=0.75*(xright-xleft)+xleft
+stress_window_left=0.25*(xright-xleft)+xleft
+window_area=(stress_window_top-stress_window_bottom)*(stress_window_right-stress_window_left)
 
 # Loading condition
-P = 100000.
+P = 50662.5
 
 # Discretization
 dt=.000001
+dtcrit=2*(math.sqrt(1+damping**2)-damping)/math.sqrt(Kn/m)
+if dt>0.1*dtcrit:
+    print("critical timestep exceeded")
+print('the ciritical timestep is {0:f} and the timestep used is {1:f}'.format(dtcrit,dt))
 dx=dy=0.001
 nn=32 # number of nodes on each particle
 d_angle=2*math.pi/nn #discretization angle
 
-# Initializing t, x, y, v, omega, and energy arrays
+# Initializing t, x, y, v, and omega arrays
 # time
-T=.000388
+T=.001425
 t=np.arange(0,T,dt)
 
 # Kinematic Properties
@@ -48,12 +60,13 @@ f=open("initial_config.txt","r")
 for j in range(total_nps):
     a=f.readline()
     b=a.split()
-    r[j]=b[0]
+    #r[j]=b[0]
     xc[0,j]=b[1]
     yc[0,j]=b[2]
 
 x=np.zeros((len(t),total_nps,nn)) 
 y=np.zeros((len(t),total_nps,nn))
+#r_avg=np.mean(r)
 
 for j in range(total_nps):
     for k in range(nn):
@@ -65,7 +78,7 @@ vx=np.zeros((len(t),total_nps)) #velocity of the center of mass
 vy=np.zeros((len(t),total_nps)) 
 vx_half=np.zeros(total_nps)
 vy_half=np.zeros(total_nps)
-omega=np.zeros(total_nps)
+omega=np.zeros(len(t),total_nps)
 omega_half=np.zeros(total_nps)
 
 # acceleration
@@ -76,12 +89,12 @@ alpha=np.zeros((len(t),total_nps))
 
 # Setting the Boundary Particles
 boundary=np.zeros(total_nps)
-v0=100.
+v0=5.
 for j in range(total_nps):
-    if yc[0,j]<0.02:
+    if yc[0,j]<2*r_avg:
         vy[:,j]=0.
         boundary[j]=1
-    if yc[0,j]>0.35:
+    if yc[0,j]>ytop-2*r_avg:
         vy[:,j]=-v0
         boundary[j]=2
 
@@ -101,6 +114,14 @@ for xx in range(nx+1):
             R=math.sqrt((xg-xmid)**2+(yg-ymid)**2) # distance from grid point to center of the particle
             LS[xx,yy,j]=R-r[0]
 LSi=0.
+
+# Initializing stress arrays
+stress_xx=np.zeros(len(t)-1)
+stress_yy=np.zeros(len(t)-1)
+stress_xy=np.zeros(len(t)-1)
+stress_yx=np.zeros(len(t)-1)
+inside_window=np.zeros((len(t)-1,total_nps),bool)
+
 
 # Updating the Kinematic Properties of Particles
 for i in range(len(t)-1):
@@ -150,18 +171,33 @@ for i in range(len(t)-1):
                     mag_dLS=math.sqrt(dLS_dx**2+dLS_dy**2)
                     normal_x=dLS_dx/mag_dLS
                     normal_y=dLS_dy/mag_dLS
-                    normal_v=(vx[i,jm]-vx[i,js])*normal_x+(vy[i,jm]-vy[i,js])*normal_y
+                    normal_v=(vx[i,jm]-vx[i,js])*normal_x+(vy[i,jm]-vy[i,js])*normal_y #the direction of normal is outward from the slave particle
+                    #tangent_v=(vx[i,jm]-vx[i,js])*normal_y-(vy[i,jm]-vy[i,js])*normal_x #the direction of tangent is in a way that n x t is upwards (if n is going left t is going down)
+                    #tangent_v+=-r*omega[i,jm]-r*omega[i,js]
             
                     # updating the accelerations
                     Fn=-Kn*LSi-Cn*normal_v 
+                    if Fn<0.:
+                        Fn=0.
+                    #Ft=-Kt*tangent_v*dt
                     # master particle
                     ax[i,jm]+=Fn*normal_x/m
                     ay[i,jm]+=Fn*normal_y/m
                     # slave particle
                     ax[i,js]+=-Fn*normal_x/m
                     ay[i,js]+=-Fn*normal_y/m
-                    #print(i,jm,js,k)
-                    
+                    if jm==8:
+                        print(i,jm,js,ax[i,jm]*m)
+
+                    if x[i,jm,k]<stress_window_right and x[i,jm,k]>stress_window_left and y[i,jm,k]<stress_window_top and y[i,jm,k]>stress_window_bottom:
+                        inside_window[i,jm]=True
+                        inside_window[i,js]=True
+                        branch=[xc[i,js]-xc[i,jm],yc[i,js]-yc[i,jm]]
+                        stress_xx[i]+=Fn*normal_x*branch[0]
+                        stress_yy[i]+=Fn*normal_y*branch[1]
+                        stress_xy[i]+=Fn*normal_y*branch[0]
+                        stress_yx[i]+=Fn*normal_x*branch[1]
+
                 # checking for the surrounding particles of the bounadry parictle:
                 # left
                 if LSi<1e-3 and jm==ileft_bound and boundary[jm]!=2:
@@ -208,6 +244,8 @@ for i in range(len(t)-1):
             ly=yavg-surrounding_bound_particle_left[0][1][1]
             ax[i,jm]+=ly*P/m
             ay[i,jm]+=-lx*P/m
+            if jm==8:
+                print(i,jm,ly*P)
             #print(jm,lx,ly,ax[i,jm],ay[i,jm])
             surrounding_bound_particle_left=[[ileft_bound,[xavg,yavg]]]
             #print('left',surrounding_bound_particle_left)
@@ -234,10 +272,15 @@ for i in range(len(t)-1):
             ly=yavg-surrounding_bound_particle_right[0][1][1]
             ax[i,jm]+=-ly*P/m
             ay[i,jm]+=lx*P/m
-            #print(jm,lx,ly,ax[i,jm],ay[i,jm])
             surrounding_bound_particle_right=[[iright_bound,[xavg,yavg]]]
             #print('right',surrounding_bound_particle_right)
 
+    # calculating the stresses in the stress window
+    stress_xx[i]/=window_area
+    stress_yy[i]/=window_area
+    stress_xy[i]/=window_area
+    stress_yx[i]/=window_area
+    
     # updating locations and velocities
     for j in range(total_nps):
         #print(j,boundary[j])
@@ -257,16 +300,32 @@ for i in range(len(t)-1):
         
 
 # Plotting
-plt.figure(figsize=(10,5))
-for i in range(0,int(T/dt),int(0.00005/dt)): 
+plt.figure(1,figsize=(10,5))
+plt.plot(t[:-1],-stress_xx,'k',label='$\sigma_{xx}$')
+plt.plot(t[:-1],-stress_yy,'r',label='$\sigma_{yy}$')
+plt.plot(t[:-1],-stress_xy,'b',label='$\sigma_{xy}$')
+plt.plot(t[:-1],-stress_yx,'g',label='$\sigma_{yx}$')
+plt.gca().ticklabel_format(axis='both',style='sci',scilimits=(0,0))
+plt.legend()
+plt.xlabel('time (sec)')
+plt.ylabel('Stress (N/m)')
+plt.savefig('stress.png')
+
+plt.figure(2,figsize=(10,5))
+for i in range(0,int(T/dt),int(0.0001/dt)): 
     plt.clf()
     plt.plot([xleft,xleft,xright,xright],[ytop,ybottom,ybottom,ytop],'k')
+    plt.plot([stress_window_left,stress_window_right,stress_window_right,stress_window_left,stress_window_left],[stress_window_bottom,stress_window_bottom,stress_window_top,stress_window_top,stress_window_bottom],'b')
     for j in range(total_nps):
         fcolor='#FFA07A'
         ecolor='#FF8C00'
         if boundary[j]!=0:
             fcolor='#ADD8E6'
             ecolor='#0000A0'
+        if inside_window[i,j]:
+            fcolor='#90EE90'
+            ecolor='#5A8B2A'
+
         x_in=[]
         y_in=[]
         x_out=[]
@@ -282,7 +341,7 @@ for i in range(0,int(T/dt),int(0.00005/dt)):
             plt.fill(x_in,y_in,facecolor=fcolor,edgecolor=ecolor)
         
     
-    plt.axis([-0.05, 0.2, 0, 0.4])
+    plt.axis([-0.02,0.07, 0, 0.12])
     plt.gca().set_aspect('equal')
     plt.savefig('Frame%07d.png' %i)
 
