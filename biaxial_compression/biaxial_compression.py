@@ -13,12 +13,14 @@ rho=7.85*1e3 #kg/m^2
 r=np.ones(total_nps)*0.003
 r_avg=np.mean(r)
 m=math.pi*r[0]**2*rho
+I=0.5*m*r[0]**2
 
 # Contact properties 
 Kn=Kt=5*1e7 #N/m
 damping=5/100
 Ccrit=2*math.sqrt(Kn*m)
 Cn=damping*Ccrit
+mu=0.5
 
 # Geometrical properties
 ybottom=0.
@@ -48,7 +50,7 @@ d_angle=2*math.pi/nn #discretization angle
 
 # Initializing t, x, y, v, and omega arrays
 # time
-T=.001425
+T=.0014
 t=np.arange(0,T,dt)
 
 # Kinematic Properties
@@ -78,7 +80,7 @@ vx=np.zeros((len(t),total_nps)) #velocity of the center of mass
 vy=np.zeros((len(t),total_nps)) 
 vx_half=np.zeros(total_nps)
 vy_half=np.zeros(total_nps)
-omega=np.zeros(len(t),total_nps)
+omega=np.zeros((len(t),total_nps))
 omega_half=np.zeros(total_nps)
 
 # acceleration
@@ -171,23 +173,27 @@ for i in range(len(t)-1):
                     mag_dLS=math.sqrt(dLS_dx**2+dLS_dy**2)
                     normal_x=dLS_dx/mag_dLS
                     normal_y=dLS_dy/mag_dLS
+                    tangent_x=-normal_y
+                    tangent_y=normal_x
                     normal_v=(vx[i,jm]-vx[i,js])*normal_x+(vy[i,jm]-vy[i,js])*normal_y #the direction of normal is outward from the slave particle
-                    #tangent_v=(vx[i,jm]-vx[i,js])*normal_y-(vy[i,jm]-vy[i,js])*normal_x #the direction of tangent is in a way that n x t is upwards (if n is going left t is going down)
-                    #tangent_v+=-r*omega[i,jm]-r*omega[i,js]
-            
+                    tangent_v=(vx[i,jm]-vx[i,js])*tangent_x+(vy[i,jm]-vy[i,js])*tangent_y #the direction of tangent is in a way that n x t is upwards (if n is going left t is going down)
+                    tangent_v+=-r[0]*omega[i,jm]-r[0]*omega[i,js]
+                    
                     # updating the accelerations
                     Fn=-Kn*LSi-Cn*normal_v 
                     if Fn<0.:
                         Fn=0.
-                    #Ft=-Kt*tangent_v*dt
+                    Ft=-Kt*tangent_v*dt
+                    if abs(Ft)>=mu*Fn:
+                        Ft=np.sign(Ft)*mu*Fn
                     # master particle
-                    ax[i,jm]+=Fn*normal_x/m
-                    ay[i,jm]+=Fn*normal_y/m
+                    ax[i,jm]+=(Fn*normal_x+Ft*tangent_x)/m
+                    ay[i,jm]+=(Fn*normal_y+Ft*tangent_y)/m
+                    alpha[i,jm]+=-Ft/I
                     # slave particle
-                    ax[i,js]+=-Fn*normal_x/m
-                    ay[i,js]+=-Fn*normal_y/m
-                    if jm==8:
-                        print(i,jm,js,ax[i,jm]*m)
+                    ax[i,js]+=-(Fn*normal_x+Ft*tangent_x)/m
+                    ay[i,js]+=-(Fn*normal_y+Ft*tangent_y)/m
+                    alpha[i,js]+=-Ft/I
 
                     if x[i,jm,k]<stress_window_right and x[i,jm,k]>stress_window_left and y[i,jm,k]<stress_window_top and y[i,jm,k]>stress_window_bottom:
                         inside_window[i,jm]=True
@@ -244,8 +250,6 @@ for i in range(len(t)-1):
             ly=yavg-surrounding_bound_particle_left[0][1][1]
             ax[i,jm]+=ly*P/m
             ay[i,jm]+=-lx*P/m
-            if jm==8:
-                print(i,jm,ly*P)
             #print(jm,lx,ly,ax[i,jm],ay[i,jm])
             surrounding_bound_particle_left=[[ileft_bound,[xavg,yavg]]]
             #print('left',surrounding_bound_particle_left)
@@ -290,10 +294,12 @@ for i in range(len(t)-1):
         else:
             vx_half[j]+=ax[i,j]*dt
             vy_half[j]+=ay[i,j]*dt
+            omega_half[j]+=alpha[i,j]*dt
             xc[i+1,j]=xc[i,j]+vx_half[j]*dt
             yc[i+1,j]=yc[i,j]+vy_half[j]*dt
             vx[i+1,j]=vx_half[j]+ax[i,j]*dt/2
             vy[i+1,j]=vy_half[j]+ay[i,j]*dt/2
+            omega[i+1,j]=omega_half[j]+alpha[i,j]*dt/2
         for k in range(nn):
             x[i+1,j,k]=xc[i+1,j]+r[j]*math.cos(d_angle*k)
             y[i+1,j,k]=yc[i+1,j]+r[j]*math.sin(d_angle*k)
