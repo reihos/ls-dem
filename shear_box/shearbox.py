@@ -12,9 +12,11 @@ m=0.04
 r=np.zeros(total_nps)
 
 # Contact properties 
-Kn=1000000.
-Cn=2.
-#Cn=0.
+Kn=Kt=1e7
+damping=0.05
+Ccrit=2*math.sqrt(Kn*m)
+Cn=damping*Ccrit
+mu=0.5
 g=9.81
 
 # Geometrical properties
@@ -25,14 +27,14 @@ xleft=0.
 width=xright-xleft
 
 # Discretization
-dt=.00001
-dx=dy=0.0001
+dt=.000001
+dx=dy=0.001
 nn=32 # number of nodes on each particle
 d_angle=2*math.pi/nn #discretization angle
 
 # Initializing t, x, y, v, omega, and energy arrays
 # time
-T=.02
+T=.0005
 t=np.arange(0,T,dt)
 
 # location
@@ -55,12 +57,14 @@ for j in range(total_nps):
         x[0,j,k]=xc[0,j]+r[j]*math.cos(d_angle*k)
         y[0,j,k]=yc[0,j]+r[j]*math.sin(d_angle*k)
 
+I=0.5*m*r**2
+
 # velocity
 vx=np.zeros((len(t),total_nps)) #velocity of the center of mass
 vy=np.zeros((len(t),total_nps)) 
 vx_half=np.zeros(total_nps)
 vy_half=np.zeros(total_nps)
-omega=np.zeros(total_nps)
+omega=np.zeros((len(t),total_nps))
 omega_half=np.zeros(total_nps)
 
 # acceleration
@@ -70,7 +74,7 @@ alpha=np.zeros((len(t),total_nps))
 
 # boundary nodes
 boundary=np.zeros(total_nps)
-v0=1.
+v0=.1
 for j in range(total_nps):
     if yc[0,j]<0.025:
         vx[:,j]=v0
@@ -142,16 +146,26 @@ for i in range(len(t)-1):
                     mag_dLS=math.sqrt(dLS_dx**2+dLS_dy**2)
                     normal_x=dLS_dx/mag_dLS
                     normal_y=dLS_dy/mag_dLS
+                    tangent_x=-normal_y
+                    tangent_y=normal_x
                     normal_v=(vx[i,jm]-vx[i,js])*normal_x+(vy[i,jm]-vy[i,js])*normal_y
-            
+                    tangent_v=(vx[i,jm]-vx[i,js])*tangent_x+(vy[i,jm]-vy[i,js])*tangent_y
+                    tangent_v+=-r[jm]*omega[i,jm]-r[js]*omega[i,js]
                     # updating the accelerations
                     Fn=-Kn*LSi-Cn*normal_v 
+                    if Fn<0.:
+                        Fn=0.
+                    Ft=-Kt*tangent_v*dt
+                    if abs(Ft)>=mu*Fn:
+                        Ft=np.sign(Ft)*mu*Fn
                     # master particle
-                    ax[i,jm]+=Fn*normal_x/m
-                    ay[i,jm]+=Fn*normal_y/m
+                    ax[i,jm]+=(Fn*normal_x+Ft*tangent_x)/m
+                    ay[i,jm]+=(Fn*normal_y+Ft*tangent_y)/m
+                    alpha[i,jm]+=-Ft/I[jm]
                     # slave particle
-                    ax[i,js]+=-Fn*normal_x/m
-                    ay[i,js]+=-Fn*normal_y/m
+                    ax[i,js]+=-(Fn*normal_x+Ft*tangent_x)/m
+                    ay[i,js]+=-(Fn*normal_y+Ft*tangent_y)/m
+                    alpha[i,js]+=-Ft/I[js]
                     #print(ax[i,jm],ay[i,jm])
     # Updating Locations and Velocities
     for j in range(total_nps):
@@ -162,10 +176,12 @@ for i in range(len(t)-1):
         else:
             vx_half[j]+=ax[i,j]*dt
             vy_half[j]+=ay[i,j]*dt
+            omega_half[j]+=alpha[i,j]*dt
             xc[i+1,j]=xc[i,j]+vx_half[j]*dt
             yc[i+1,j]=yc[i,j]+vy_half[j]*dt
             vx[i+1,j]=vx_half[j]+ax[i,j]*dt/2
             vy[i+1,j]=vy_half[j]+ay[i,j]*dt/2
+            omega[i+1,j]=omega_half[j]+alpha[i,j]*dt/2
         for k in range(nn):
             x[i+1,j,k]=xc[i+1,j]+r[j]*math.cos(d_angle*k)
             y[i+1,j,k]=yc[i+1,j]+r[j]*math.sin(d_angle*k)
@@ -178,7 +194,7 @@ for i in range(len(t)-1):
 # Plotting
 plt.figure(figsize=(10,5))
 # plotting every 0.005sec
-for i in range(0,int(T/dt),int(0.0005/dt)): 
+for i in range(0,int(T/dt),int(0.000001/dt)): 
     plt.clf()
     plt.plot([0.,0.,0.3,0.3],[0.15,0.,0.,0.15],'k')
     for j in range(total_nps):
