@@ -17,7 +17,7 @@ I=0.5*m*r[0]**2
 
 # Contact properties 
 Kn=Kt=5*1e7 #N/m
-damping=5/100
+damping=0.05
 Ccrit=2*math.sqrt(Kn*m)
 Cn=damping*Ccrit
 mu=0.5
@@ -50,10 +50,9 @@ d_angle=2*math.pi/nn #discretization angle
 
 # Initializing t, x, y, v, and omega arrays
 # time
-T=.0014
+T=.002
 t=np.arange(0,T,dt)
 
-# Kinematic Properties
 # location
 xc=np.zeros((len(t),total_nps)) # x of center
 yc=np.zeros((len(t),total_nps)) # y of center
@@ -149,6 +148,9 @@ for i in range(len(t)-1):
         for js in range(jm+1,total_nps):
             new_particle_left = True
             new_particle_right = True
+            Fn_max=0.
+            Fx_max=0.
+            Fy_max=0.
             # looping across nodes of the master particle
             for k in range(nn):
                 # updating LS indices
@@ -177,7 +179,7 @@ for i in range(len(t)-1):
                     tangent_y=normal_x
                     normal_v=(vx[i,jm]-vx[i,js])*normal_x+(vy[i,jm]-vy[i,js])*normal_y #the direction of normal is outward from the slave particle
                     tangent_v=(vx[i,jm]-vx[i,js])*tangent_x+(vy[i,jm]-vy[i,js])*tangent_y #the direction of tangent is in a way that n x t is upwards (if n is going left t is going down)
-                    tangent_v+=-r[0]*omega[i,jm]-r[0]*omega[i,js]
+                    tangent_v+=-r[jm]*omega[i,jm]-r[js]*omega[i,js]
                     
                     # updating the accelerations
                     Fn=-Kn*LSi-Cn*normal_v 
@@ -186,23 +188,24 @@ for i in range(len(t)-1):
                     Ft=-Kt*tangent_v*dt
                     if abs(Ft)>=mu*Fn:
                         Ft=np.sign(Ft)*mu*Fn
+                    Fx=Fn*normal_x+Ft*tangent_x 
+                    Fy=Fn*normal_y+Ft*tangent_y  
                     # master particle
-                    ax[i,jm]+=(Fn*normal_x+Ft*tangent_x)/m
-                    ay[i,jm]+=(Fn*normal_y+Ft*tangent_y)/m
+                    ax[i,jm]+=Fx/m
+                    ay[i,jm]+=Fy/m
                     alpha[i,jm]+=-Ft/I
                     # slave particle
-                    ax[i,js]+=-(Fn*normal_x+Ft*tangent_x)/m
-                    ay[i,js]+=-(Fn*normal_y+Ft*tangent_y)/m
+                    ax[i,js]+=-Fx/m
+                    ay[i,js]+=-Fy/m
                     alpha[i,js]+=-Ft/I
 
                     if x[i,jm,k]<stress_window_right and x[i,jm,k]>stress_window_left and y[i,jm,k]<stress_window_top and y[i,jm,k]>stress_window_bottom:
                         inside_window[i,jm]=True
                         inside_window[i,js]=True
-                        branch=[xc[i,js]-xc[i,jm],yc[i,js]-yc[i,jm]]
-                        stress_xx[i]+=Fn*normal_x*branch[0]
-                        stress_yy[i]+=Fn*normal_y*branch[1]
-                        stress_xy[i]+=Fn*normal_y*branch[0]
-                        stress_yx[i]+=Fn*normal_x*branch[1]
+                        if Fn>Fn_max:
+                            Fn_max=Fn
+                            Fx_max=Fx 
+                            Fy_max=Fy  
 
                 # checking for the surrounding particles of the bounadry parictle:
                 # left
@@ -223,6 +226,14 @@ for i in range(len(t)-1):
                         num+=1
                     else:
                         surrounding_bound_particle_right[num][1].append([x[i,jm,k],y[i,jm,k]])
+            
+            # caluclating the stress between particles jm and js in the stress window
+            branch=[xc[i,js]-xc[i,jm],yc[i,js]-yc[i,jm]]
+            stress_xx[i]+=Fx_max*branch[0]
+            stress_yy[i]+=Fy_max*branch[1]
+            stress_xy[i]+=Fy_max*branch[0]
+            stress_yx[i]+=Fx_max*branch[1]
+    
         
         #print(jm,ax[i,jm],ay[i,jm])
         #print(i,jm,surrounding_bound_particle_left,surrounding_bound_particle_right)
@@ -278,7 +289,7 @@ for i in range(len(t)-1):
             ay[i,jm]+=lx*P/m
             surrounding_bound_particle_right=[[iright_bound,[xavg,yavg]]]
             #print('right',surrounding_bound_particle_right)
-
+            
     # calculating the stresses in the stress window
     stress_xx[i]/=window_area
     stress_yy[i]/=window_area
