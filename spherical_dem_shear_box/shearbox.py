@@ -8,23 +8,22 @@ import matplotlib.pyplot as plt
 # SI Units
 
 # Particle properties
-total_nps=100 #total number of particles
 m=0.04
-r=np.zeros(total_nps)
 
 # Contact properties 
 Kn=1e5
-Kt=0.
+Kt=1e5
 damping=0.05
 Ccrit=2*np.sqrt(Kn*m)
 Cn=damping*Ccrit
 mu=0.5
+murf=0.5
 g=9.81
 
 # Geometrical properties
 ybottom=0.
-ytop=0.165
-xright=0.3
+ytop=0.68
+xright=1.
 xleft=0.
 width=xright-xleft
 
@@ -35,7 +34,6 @@ stress_window_right=0.8*(xright-xleft)+xleft
 stress_window_left=0.2*(xright-xleft)+xleft
 window_area=(stress_window_top-stress_window_bottom)*(stress_window_right-stress_window_left)
 
-
 # Discretization
 dt=.0001
 dtcrit=2*(math.sqrt(1+damping**2)-damping)/math.sqrt(Kn/m)
@@ -45,35 +43,39 @@ print('the ciritical timestep is {0:f} and the timestep used is {1:f}'.format(dt
 
 # Initializing t, x, y, v, omega, and energy arrays
 # time
-T=1.
+T=1.0
 t=np.arange(0,T,dt)
-T_pressure=0.2
+T_pressure=0.
 
 # location
+#f=open("initial_config_999.txt","r")
+f=open("config_after_pressure_T0-0.3.txt","r")
+lines=f.read().splitlines()
+total_nps=len(lines)
+r=np.zeros(total_nps)
 xc=np.zeros((len(t),total_nps)) # x of center
 yc=np.zeros((len(t),total_nps)) # y of center
-
-f=open("initial_config.txt","r")
-for j in range(total_nps):
-    a=f.readline()
-    b=a.split()
-    r[j]=b[0]
-    xc[0,j]=b[1]
-    yc[0,j]=b[2]
-
+j=0
+for line in lines:
+    s=line.split()
+    r[j]=s[0]
+    xc[0,j]=s[1]
+    yc[0,j]=s[2]
+    j+=1
+print('number of particles =',total_nps)
 # adding roller boundary particles
-n_roller=10
+n_roller=33
 r_roller=np.ones(n_roller)*0.01
 for j in range(n_roller):
-    if j%2!=0:
+    if j%2==0:
         r_roller[j]=0.02
-
 x_roller=np.zeros((len(t),n_roller))
 y_roller_top=np.zeros((len(t),n_roller))
 y_roller_bottom=np.zeros((len(t),n_roller))
 for j in range(n_roller):
     x_roller[0,j]=sum(r_roller[:j+1]*2)-r_roller[j]
-y_roller_top[0,:]=ytop+max(r_roller)
+#y_roller_top[0,:]=ytop+max(r_roller)
+y_roller_top[0,:]=0.640408
 y_roller_bottom[0,:]=ybottom-max(r_roller)
 xc=np.concatenate((xc,x_roller,x_roller),axis=1)
 yc=np.concatenate((yc,y_roller_top,y_roller_bottom),axis=1)
@@ -106,17 +108,13 @@ inside_window=np.zeros((len(t)-1,total_nps),bool)
 boundary=np.zeros(total_nps)
 v0=.1
 P=1000
-#top_particles=pd.DataFrame({'index':[],'x':[],'y':[]})
 for j in range(total_nps):
-    if yc[0,j]<ybottom:
-        vx[int(T_pressure/dt):,j]=v0
+    if j>=total_nps-n_roller: #bottom
+        vx[int(T_pressure/dt):,j]=0.
         boundary[j]=1
-    if yc[0,j]>ytop:
+    elif j>=total_nps-2*n_roller: #top
         vx[int(T_pressure/dt):,j]=-v0
-        #vy[:,j]=-v0
         boundary[j]=2
-#        top_particles=top_particles.append(pd.DataFrame({'index':[j],'x':[xc[0,j]],'y':[yc[0,j]]}),ignore_index=True)
-#top_particles.sort_values("x",inplace=True)
 
 #boundary conditions for plate
 plate=False
@@ -155,23 +153,28 @@ for i in range(len(t)-1):
                     normal_v=(vx[i,jm]-vx[i,js])*normal_x+(vy[i,jm]-vy[i,js])*normal_y
                     tangent_v=(vx[i,jm]-vx[i,js])*tangent_x+(vy[i,jm]-vy[i,js])*tangent_y
                     tangent_v+=-r[jm]*omega[i,jm]-r[js]*omega[i,js]
-                    # updating the accelerations
+                    theta_rel=(omega[i,jm]+omega[i,js])*dt
+                    r_avg=(r[jm]+r[js])/2
+                    # caluclating forces and updating the accelerations
                     Fn=-Kn*delta-Cn*normal_v 
                     if Fn<0.:
                         Fn=0.
                     Ft=-Kt*tangent_v*dt
                     if abs(Ft)>=mu*Fn:
                         Ft=np.sign(Ft)*mu*Fn
+                    Mr=-Kt*r_avg**2*theta_rel
+                    if abs(Mr)>=murf*Fn*r_avg:
+                        Mr=np.sign(Mr)*murf*Fn*r_avg
                     Fx=Fn*normal_x+Ft*tangent_x 
                     Fy=Fn*normal_y+Ft*tangent_y 
                     # master particle
                     ax[i,jm]+=Fx/m
                     ay[i,jm]+=Fy/m
-                    alpha[i,jm]+=-Ft/I[jm]
+                    alpha[i,jm]+=(-Ft*r[jm]+Mr)/I[jm]
                     # slave particle
                     ax[i,js]+=-Fx/m
                     ay[i,js]+=-Fy/m
-                    alpha[i,js]+=-Ft/I[js]
+                    alpha[i,js]+=(-Ft*r[js]+Mr)/I[js]
                     if boundary[jm]==2:
                         Fy_roller+=Fy
                     if boundary[js]==2:
@@ -267,6 +270,14 @@ for i in range(len(t)-1):
         #ytop+=vytop_halp*dt
         #vytop=vytop_half+aytop*dt/2
 
+# Writing the results to a text file
+f=open("config_after_pressure.txt","w+")
+for j in range(total_nps):
+    f.write("%f\t%f\t%f\n" % (r[j],xc[-1,j],yc[-1,j]))
+f.close()
+
+print('stress_xx = ',-np.mean(stress_xx),'stress_xy = ',-np.mean(stress_xy))
+
 # Plotting
 plt.figure(1,figsize=(10,5))
 plt.plot(t[:-1],-stress_xx,'k',label='$\sigma_{xx}$')
@@ -279,7 +290,7 @@ plt.xlabel('time (sec)')
 plt.ylabel('Stress (N/m)')
 plt.savefig('stress.png')
 
-plt.figure(figsize=(10,5))
+plt.figure(figsize=(10,10))
 # plotting every 0.01 sec
 nn=32 # number of nodes on each particle
 d_angle=2*math.pi/nn #discretization angle
@@ -325,8 +336,8 @@ for i in range(0,int(T/dt),int(0.01/dt)):
         y_dot=yc[i,j]+r[j]/2*math.sin(theta[i,j])
         if x_dot<xleft: x_dot+=width
         if x_dot>xright: x_dot-=width
-        plt.plot(x_dot,y_dot,'ok',markersize=2)   
+        plt.plot(x_dot,y_dot,'ok',markersize=.5)   
     
-    plt.axis([-0.05, 0.35, -0.02, 0.4])
+    plt.axis([xleft-.25*width,xright+.25*width,ybottom-.25*(ytop-ybottom),ytop+.25*(ytop-ybottom)])
     plt.gca().set_aspect('equal')
     plt.savefig('Frame%07d.png' %i)
